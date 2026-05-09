@@ -14,6 +14,7 @@
     "sync:cursor": "npx tsx scripts/sync-cursor.ts",
     "sync:azure": "npx tsx scripts/sync-azure.ts",
     "sync:claude-enterprise": "npx tsx scripts/sync-claude-enterprise.ts",
+    "backfill:claude-cost": "npx tsx scripts/backfill-claude-cost.ts",
     "test": "vitest run"
   },
   "dependencies": {

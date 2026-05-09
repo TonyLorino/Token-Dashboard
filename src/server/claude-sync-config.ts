@@ -9,8 +9,17 @@ export const CLAUDE_ANALYTICS_DATA_FLOOR = "2026-01-01";
 /**
  * Data availability lag for the Analytics API (days). The most recent
  * queryable date is `today - CLAUDE_ANALYTICS_LAG_DAYS`.
+ *
+ * Empirical: Anthropic publishes the cost endpoints within ~24 hours.
+ * The probe at `/api/sync/claude-enterprise/probe` reports
+ * `data_refreshed_at` for the queried window; recent observations show
+ * the most recent UTC day finalizing within ~5 hours of midnight UTC.
+ *
+ * We keep this at 1 (not 0) because the most recent UTC day is still
+ * mid-revision while it's in progress. Staying one day back trades
+ * ~24 hours of freshness for stable, non-revising figures.
  */
-export const CLAUDE_ANALYTICS_LAG_DAYS = 3;
+export const CLAUDE_ANALYTICS_LAG_DAYS = 1;
 
 /**
  * Returns the Unix-ms timestamp for the start of the Claude Analytics API lookback.

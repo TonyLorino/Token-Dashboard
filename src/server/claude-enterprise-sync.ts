@@ -998,6 +998,89 @@ export interface ClaudeEnterpriseSyncResult {
   resources?: { label: string; rows: number }[];
 }
 
+/**
+ * One-shot backfill for cost & usage stages over an explicit date range.
+ *
+ * Bypasses the incremental-watermark logic in `getIncrementalStart` so it
+ * can pull historical days that were missed (e.g. policy.startedOn was
+ * before the cost endpoints were deployed). Records a connector_runs row
+ * for observability but does NOT advance the watermark, so the next regular
+ * `syncClaudeEnterpriseData()` continues to work normally.
+ *
+ * Only runs the cost + per-user usage stages — engagement summaries are
+ * already kept current by the incremental sync.
+ */
+export async function backfillClaudeEnterpriseCostAndUsage(
+  startDate: string,
+  endDate: string,
+): Promise<ClaudeEnterpriseSyncResult> {
+  const db = getDb();
+  const errors: string[] = [];
+  const resources: { label: string; rows: number }[] = [];
+  let rows = 0;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    throw new Error(`Invalid date(s): startDate=${startDate} endDate=${endDate} (expected YYYY-MM-DD)`);
+  }
+  if (startDate > endDate) {
+    throw new Error(`startDate (${startDate}) must be <= endDate (${endDate})`);
+  }
+
+  const floorMs = new Date(`${CLAUDE_ANALYTICS_DATA_FLOOR}T00:00:00.000Z`).getTime();
+  const startMs = new Date(`${startDate}T00:00:00.000Z`).getTime();
+  if (startMs < floorMs) {
+    throw new Error(
+      `startDate ${startDate} is before the analytics data floor ${CLAUDE_ANALYTICS_DATA_FLOOR}`,
+    );
+  }
+
+  const [run] = await db
+    .insert(connectorRuns)
+    .values({
+      sourceSystem: SOURCE,
+      connectorName: "claude-enterprise-backfill",
+      status: "running",
+    })
+    .returning({ id: connectorRuns.id });
+  const runId = run?.id;
+
+  const dates = enumerateDates(startDate, endDate);
+
+  const runResource = async (label: string, fn: () => Promise<number>) => {
+    try {
+      const r = await fn();
+      rows += r;
+      resources.push({ label, rows: r });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`${label}: ${msg}`);
+      resources.push({ label, rows: 0 });
+    }
+  };
+
+  await runResource("backfill.user_cost", () => syncAnalyticsUserCost(dates));
+  await runResource("backfill.user_usage", () => syncAnalyticsUserUsage(dates));
+  await runResource("backfill.cost_bucketed", () => syncAnalyticsCostBucketed(startDate, endDate));
+
+  if (runId) {
+    await db
+      .update(connectorRuns)
+      .set({
+        status: errors.length > 0 ? "failed" : "success",
+        finishedAt: new Date(),
+        rowsUpserted: rows,
+        errorMessage: errors.length > 0 ? errors.join("; ") : null,
+        // Intentionally NOT setting watermarkAt: a backfill should not
+        // advance the incremental cursor for forward-going syncs.
+        metadataJson: { backfill: true, startDate, endDate, resources },
+      })
+      .where(eq(connectorRuns.id, runId));
+  }
+
+  const lookbackDays = enumerateDates(startDate, endDate).length;
+  return { rowsUpserted: rows, lookbackDays, errors, resources };
+}
+
 export async function syncClaudeEnterpriseData(): Promise<ClaudeEnterpriseSyncResult> {
   const db = getDb();
   const errors: string[] = [];
