@@ -21,14 +21,21 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Inject Next.js Bypass (Leaves source code untouched)
+      - name: Bypass Static Generation (Next.js 16 Fix)
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            let code = fs.readFileSync('next.config.ts', 'utf8');
-            code = code.replace(/(const nextConfig[^=]*=\s*\{)/, '$1 \n  experimental: { missingSuspenseWithCSRBailout: false },\n');
-            fs.writeFileSync('next.config.ts', code);
+            // Check both standard Next.js directory structures
+            const paths = ['src/app/layout.tsx', 'app/layout.tsx'];
+            for (const p of paths) {
+              if (fs.existsSync(p)) {
+                let code = fs.readFileSync(p, 'utf8');
+                // Inject the force-dynamic flag at the very top of the file
+                fs.writeFileSync(p, "export const dynamic = 'force-dynamic';\n" + code);
+                console.log('Successfully patched ' + p);
+              }
+            }
 
       - name: Build project
         run: npm run build
@@ -60,5 +67,5 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'ai-inference-dashboard'
+          app-name: 'ai-inference-dashboard' 
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
