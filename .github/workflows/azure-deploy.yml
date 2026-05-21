@@ -1,21 +1,24 @@
-name: Build and deploy Next.js app to Azure
+name: Build and deploy Node.js app to Azure Web App - ai-inference-dashboard
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # This is required for actions/checkout
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up Node.js version
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24.x'
           cache: 'npm'
 
       - name: Install dependencies
@@ -38,8 +41,8 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Zip artifact for deployment
-        run: zip -qq -r release.zip .
+      - name: Zip artifact for deployment (Preserves Next.js Symlinks)
+        run: zip -qq -r -y release.zip .
 
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
@@ -52,16 +55,18 @@ jobs:
     needs: build
     environment:
       name: 'Production'
-
+    
     steps:
-      - name: Download artifact
+      - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: node-app
-
+      
       - name: Deploy to Azure Web App
+        id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'ai-inference-dashboard'  
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
+          app-name: 'ai-inference-dashboard'
+          slot-name: 'Production'
           package: release.zip
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
