@@ -1,19 +1,30 @@
 name: Initialize Database
 
 on:
-  workflow_dispatch: # Creates the manual "Run workflow" button in GitHub
+  workflow_dispatch: 
 
 jobs:
   setup-db:
     runs-on: ubuntu-latest
     
-    # Injecting your exact GitHub Secrets into the server environment
     env:
+      # Database
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      OPENAI_ADMIN_KEY: ${{ secrets.OPENAI_ADMIN_KEY }}
-      CLAUDE_ANALYTICS_API_KEY: ${{ secrets.CLAUDE_ANALYTICS_API_KEY }}
+      
+      # Cursor
       CURSOR_ADMIN_API_KEY: ${{ secrets.CURSOR_ADMIN_API_KEY }}
       CURSOR_API_BASE_URL: ${{ secrets.CURSOR_API_BASE_URL }}
+      
+      # OpenAI (Notice how we map your secret name to the environment variable the app expects)
+      OPENAI_ADMIN_API_KEY: ${{ secrets.OPENAI_ADMIN_KEY }}
+      OPENAI_ORG_ID: ${{ secrets.OPENAI_ORG_ID }}
+      OPENAI_SYNC_LOOKBACK_DAYS: ${{ secrets.OPENAI_SYNC_LOOKBACK_DAYS }}
+      
+      # Claude
+      CLAUDE_ANALYTICS_API_KEY: ${{ secrets.CLAUDE_ANALYTICS_API_KEY }}
+      CLAUDE_ANALYTICS_LOOKBACK_DAYS: ${{ secrets.CLAUDE_ANALYTICS_LOOKBACK_DAYS }}
+
+      # Note: AZURE_SYNC_LOOKBACK_DAYS is safely ignored here since we omit the Azure script.
 
     steps:
       - name: Checkout repository
@@ -31,7 +42,7 @@ jobs:
       - name: Run Drizzle Migrations (Build Tables)
         run: npx drizzle-kit push
 
-      - name: Run Data Sync Scripts (Backfill Data)
+      - name: Run Data Sync Scripts (API Auth Only)
         run: |
           npx tsx scripts/sync-cursor.ts
           npx tsx scripts/sync-openai.ts
