@@ -1,0 +1,38 @@
+name: Initialize Database
+
+on:
+  workflow_dispatch: # Creates the manual "Run workflow" button in GitHub
+
+jobs:
+  setup-db:
+    runs-on: ubuntu-latest
+    
+    # Injecting your exact GitHub Secrets into the server environment
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      OPENAI_ADMIN_KEY: ${{ secrets.OPENAI_ADMIN_KEY }}
+      CLAUDE_ANALYTICS_API_KEY: ${{ secrets.CLAUDE_ANALYTICS_API_KEY }}
+      CURSOR_ADMIN_API_KEY: ${{ secrets.CURSOR_ADMIN_API_KEY }}
+      CURSOR_API_BASE_URL: ${{ secrets.CURSOR_API_BASE_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Drizzle Migrations (Build Tables)
+        run: npx drizzle-kit push
+
+      - name: Run Data Sync Scripts (Backfill Data)
+        run: |
+          npx tsx scripts/sync-cursor.ts
+          npx tsx scripts/sync-openai.ts
+          npx tsx scripts/sync-claude-enterprise.ts
